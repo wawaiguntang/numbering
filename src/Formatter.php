@@ -15,6 +15,7 @@ class Formatter
     private ?int $sequence = null;
     private ?int $sequenceLength = null;
     private bool $romanSequence = false;
+    private string $padChar = '0';
 
     /**
      * Set custom parameter value.
@@ -41,6 +42,16 @@ class Formatter
     public function useRomanSequence(bool $use = true): self
     {
         $this->romanSequence = $use;
+        return $this;
+    }
+
+    /**
+     * Set padding character for sequence.
+     * Default is '0' (e.g., 001, 002).
+     */
+    public function setPadChar(string $char): self
+    {
+        $this->padChar = $char;
         return $this;
     }
 
@@ -198,7 +209,7 @@ class Formatter
             $length = isset($matches[1]) ? (int) $matches[1] : $this->sequenceLength;
             
             if ($length !== null) {
-                return str_pad((string) $number, $length, '0', STR_PAD_LEFT);
+                return str_pad((string) $number, $length, $this->padChar, STR_PAD_LEFT);
             }
             
             return (string) $number;

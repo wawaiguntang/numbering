@@ -219,6 +219,113 @@ class Pendaftaran extends CI_Controller
 }
 ```
 
+## Advanced Numbering (CI 4)
+
+Untuk fitur advanced (reset tiap N nomor, skip nomor, limit maksimum):
+
+### Advanced Library
+
+Create `app/Libraries/NumberingAdvanced_lib.php`:
+
+```php
+<?php
+
+namespace App\Libraries;
+
+use Wawaiguntang\Numbering\AdvancedNumbering;
+use Wawaiguntang\Numbering\Storages\AdvancedStorage;
+
+class NumberingAdvanced_lib
+{
+    private $storage;
+    
+    public function __construct()
+    {
+        $this->storage = new AdvancedStorage(function($key, $context) {
+            $db = \Config\Database::connect();
+            
+            $db->transStart();
+            
+            $builder = $db->table('numbering_counters');
+            $record = $builder->where('counter_key', $key)
+                             ->get()
+                             ->getRow();
+            
+            if (!$record) {
+                $builder->insert([
+                    'counter_key' => $key,
+                    'last_number' => 1,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+                $db->transComplete();
+                return 1;
+            }
+            
+            $builder->where('id', $record->id)
+                   ->update([
+                       'last_number' => $record->last_number + 1,
+                       'updated_at' => date('Y-m-d H:i:s'),
+                   ]);
+            
+            $db->transComplete();
+            return $record->last_number + 1;
+        });
+    }
+    
+    public function forPoliklinik(string $kodePoli): string
+    {
+        return (new AdvancedNumbering())
+            ->setAdvancedStorage($this->storage)
+            ->pattern('PU/{kodePoli}/{sequence:3}')
+            ->param('kodePoli', $kodePoli)
+            ->resetEvery(999)              // Reset tiap 999
+            ->skip([4, 13, 44])            // Skip nomor "tidak bagus"
+            ->maxLimit(999, 'reset')        // Auto-reset jika melebihi 999
+            ->padChar('0')                 // Padding dengan 0
+            ->generate();
+    }
+    
+    public function forIGD(): string
+    {
+        return (new AdvancedNumbering())
+            ->setAdvancedStorage($this->storage)
+            ->pattern('IGD/{romanDate}/{sequence:2}')
+            ->resetEvery(50)              // Reset tiap 50 per hari
+            ->skip([4, 13])              // Skip nomor tertentu
+            ->generate();
+    }
+}
+```
+
+### Controller Usage
+
+```php
+<?php
+
+namespace App\Controllers;
+
+class Pendaftaran extends BaseController
+{
+    protected $numbering;
+    
+    public function __construct()
+    {
+        $this->numbering = new \App\Libraries\NumberingAdvanced_lib();
+    }
+    
+    public function daftarPoliklinik()
+    {
+        $kodePoli = $this->request->getPost('kode_poli');
+        $noRegistrasi = $this->numbering->forPoliklinik($kodePoli);
+        
+        $this->db->table('pendaftaran')->insert([
+            'no_registrasi' => $noRegistrasi,
+            // ...
+        ]);
+    }
+}
+```
+
 ## Helper Function (CI 3/4)
 
 Create `app/Helpers/numbering_helper.php`:

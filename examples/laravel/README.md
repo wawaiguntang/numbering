@@ -160,6 +160,111 @@ class PendaftaranController extends Controller
 }
 ```
 
+## Advanced Numbering dengan Database
+
+Untuk fitur advanced (reset tiap N nomor, skip nomor, limit maksimum):
+
+### Advanced Service Provider
+
+```php
+<?php
+
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use Wawaiguntang\Numbering\AdvancedNumbering;
+use Wawaiguntang\Numbering\Storages\AdvancedStorage;
+
+class AdvancedNumberingServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        $this->app->singleton('advanced.numbering', function () {
+            // Buat storage dengan DB transaction dan locking
+            $storage = new AdvancedStorage(function($key, $context) {
+                return DB::transaction(function() use ($key, $context) {
+                    $record = DB::table('numbering_counters')
+                        ->where('counter_key', $key)
+                        ->lockForUpdate()
+                        ->first();
+                    
+                    if (!$record) {
+                        DB::table('numbering_counters')->insert([
+                            'counter_key' => $key,
+                            'last_number' => 1,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                        return 1;
+                    }
+                    
+                    DB::table('numbering_counters')
+                        ->where('id', $record->id)
+                        ->update([
+                            'last_number' => $record->last_number + 1,
+                            'updated_at' => now(),
+                        ]);
+                    
+                    return $record->last_number + 1;
+                });
+            });
+            
+            return $storage;
+        });
+    }
+}
+```
+
+### Advanced Controller Usage
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use Wawaiguntang\Numbering\AdvancedNumbering;
+
+class PendaftaranAdvancedController extends Controller
+{
+    public function storePoliklinik(Request $request)
+    {
+        $storage = app('advanced.numbering');
+        
+        $noRegistrasi = (new AdvancedNumbering())
+            ->pattern('PU/{kodePoli}/{sequence:3}')
+            ->param('kodePoli', $request->kode_poli)
+            ->setAdvancedStorage($storage)
+            ->resetEvery(999)              // Reset tiap 999 nomor
+            ->skip([4, 13, 44])           // Skip nomor "tidak bagus"
+            ->maxLimit(999, 'reset')       // Auto-reset jika mencapai 999
+            ->padChar('0')                // Padding dengan 0
+            ->generate();
+        
+        Pendaftaran::create([
+            'no_registrasi' => $noRegistrasi,
+            // ...
+        ]);
+    }
+    
+    public function storeIGD(Request $request)
+    {
+        $storage = app('advanced.numbering');
+        
+        $noRegistrasi = (new AdvancedNumbering())
+            ->pattern('IGD/{romanDate}/{sequence:2}')
+            ->setAdvancedStorage($storage)
+            ->resetEvery(50)              // Reset tiap 50 per hari
+            ->skip([4, 13])              // Skip nomor tertentu
+            ->generate();
+        
+        IGD::create([
+            'no_registrasi' => $noRegistrasi,
+            // ...
+        ]);
+    }
+}
+```
+
 ## Facade (Optional)
 
 Create `app/Facades/Numbering.php`:

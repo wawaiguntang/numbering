@@ -222,6 +222,78 @@ echo $service->generateNoRegistrasiRI('MEL') . "\n";  // RI/MEL/I
 echo $service->generateNoResep('123456') . "\n";      // RSP/123456/20250523/01
 ```
 
+## Advanced Numbering dengan PDO
+
+Untuk fitur advanced (reset tiap N nomor, skip nomor, limit maksimum):
+
+```php
+<?php
+
+require_once 'vendor/autoload.php';
+
+use Wawaiguntang\Numbering\AdvancedNumbering;
+use Wawaiguntang\Numbering\Storages\AdvancedStorage;
+
+// Setup AdvancedStorage dengan PDO
+$pdo = new PDO('mysql:host=localhost;dbname=simrs;charset=utf8', 'user', 'password');
+
+$storage = new AdvancedStorage(function($key, $context) use ($pdo) {
+    $pdo->beginTransaction();
+    
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT id, last_number FROM numbering_counters 
+             WHERE counter_key = ? 
+             FOR UPDATE"
+        );
+        $stmt->execute([$key]);
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$record) {
+            $stmt = $pdo->prepare(
+                "INSERT INTO numbering_counters (counter_key, last_number) VALUES (?, 1)"
+            );
+            $stmt->execute([$key]);
+            $next = 1;
+        } else {
+            $next = $record['last_number'] + 1;
+            $stmt = $pdo->prepare("UPDATE numbering_counters SET last_number = ? WHERE id = ?");
+            $stmt->execute([$next, $record['id']]);
+        }
+        
+        $pdo->commit();
+        return $next;
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+});
+
+// Poliklinik dengan advanced features
+$noPoli = (new AdvancedNumbering())
+    ->pattern('PU/{kodePoli}/{sequence:3}')
+    ->param('kodePoli', 'A')
+    ->setAdvancedStorage($storage)
+    ->resetEvery(999)              // Reset tiap 999 nomor
+    ->skip([4, 13, 44])           // Skip nomor "tidak bagus"
+    ->maxLimit(999, 'reset')       // Auto-reset jika mencapai 999
+    ->padChar('0')                // Padding dengan 0
+    ->generate();
+
+echo $noPoli . "\n";  // PUA001, PUA002, PUA003, PUA005...
+
+// IGD dengan advanced features
+$noIGD = (new AdvancedNumbering())
+    ->pattern('IGD/{romanDate}/{sequence:2}')
+    ->setAdvancedStorage($storage)
+    ->resetEvery(50)              // Reset tiap 50 per hari
+    ->skip([4, 13])              // Skip nomor tertentu
+    ->generate();
+
+echo $noIGD . "\n";  // IGD/23/V/MMXXV/01
+```
+
 ## Database Schema
 
 ```sql

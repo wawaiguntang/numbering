@@ -15,6 +15,7 @@ $number = (new Numbering())
 - **Roman Numerals** - Full support for Roman date and sequence (I, II, III, MMXXV)
 - **Database Counter** - Callback-based counter (no DB dependency in library)
 - **Auto Reset** - Daily, monthly, yearly counter reset
+- **Advanced Reset** - Reset every N numbers, skip specific numbers, max limit
 - **Framework Agnostic** - Works with Laravel, CodeIgniter, or plain PHP
 - **Zero Dependencies** - Pure PHP 8.1+
 
@@ -138,6 +139,37 @@ $numbering = (new Numbering())
 // Available: never, daily, monthly, yearly
 ```
 
+### Advanced Features (New in v1.1)
+
+Use `AdvancedNumbering` class for complex reset logic:
+
+```php
+use Wawaiguntang\Numbering\AdvancedNumbering;
+use Wawaiguntang\Numbering\Storages\AdvancedStorage;
+
+// Setup storage
+$storage = new AdvancedStorage(fn() => getNextFromDB());
+
+// Create numbering with advanced features
+$numbering = new AdvancedNumbering('PU/{sequence:3}');
+$number = $numbering
+    ->setAdvancedStorage($storage)
+    ->resetEvery(999)              // Reset after 999 numbers
+    ->skip([4, 13, 666])         // Skip unlucky numbers
+    ->maxLimit(999, 'reset')      // Auto-reset at 999 (or 'throw')
+    ->padChar('0')               // Custom padding: 001, 002...
+    ->generate();                // PU001, PU002, PU003, PU005...
+```
+
+**Advanced Features Table:**
+
+| Feature | Method | Description |
+|---------|--------|-------------|
+| Reset Every N | `resetEvery(1000)` | 1,2,...,999,1000,1,2... |
+| Skip Numbers | `skip([4,13])` | Skip specific numbers |
+| Max Limit | `maxLimit(999, 'throw')` | Throw/reset at limit |
+| Custom Padding | `padChar('X')` | XXX1, XXX2... |
+
 ### Transformations
 
 ```php
@@ -240,6 +272,28 @@ class MyStorage implements CounterStorageInterface
 
 $numbering->setStorage(new MyStorage());
 ```
+
+### Advanced Storage
+
+```php
+use Wawaiguntang\Numbering\Storages\AdvancedStorage;
+
+$storage = new AdvancedStorage(fn() => getNextFromDB());
+$storage
+    ->resetEvery(1000)           // Reset every 1000 numbers
+    ->skip([4, 13, 666])         // Skip specific numbers
+    ->maxLimit(999, 'reset');     // Max 999, auto-reset at limit
+
+$numbering->setAdvancedStorage($storage);
+```
+
+**AdvancedStorage Features:**
+
+| Feature | Method | Description |
+|---------|--------|-------------|
+| Reset Every N | `resetEvery(int $count)` | Cycle 1 to N repeatedly |
+| Skip Numbers | `skip(array $numbers)` | Never return these numbers |
+| Max Limit | `maxLimit(int $limit, string $onReach)` | Throw or reset at limit |
 
 ## Testing
 
